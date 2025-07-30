@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -50,6 +51,10 @@ func main() {
 	var CACert = []byte(`{{ .CACert }}`)
 	var ignoreEnvProxy, _ = strconv.ParseBool(`{{ .IgnoreEnvProxy }}`)
 
+	flag.Usage = func() {}
+	var insecure = flag.Bool("insecure", false, "")
+	flag.Parse()
+
 	var conn net.Conn
 	redirectorMap = make(map[string]relay.Redirector)
 
@@ -87,8 +92,11 @@ func main() {
 					if options.Roots == nil {
 						return errors.New("no root certificate")
 					}
-					if _, err := cert.Verify(options); err != nil {
-						return err
+
+					if !*insecure {
+						if _, err := cert.Verify(options); err != nil {
+							return err
+						}
 					}
 
 					return nil

@@ -46,8 +46,13 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 		quit:           make(chan error, 1),
 	}
 
+	var clientAuth = tls.RequireAndVerifyClientCert
+	if config.InsecureAgents {
+		clientAuth = tls.NoClientCert
+	}
+
 	tlsConfig := &tls.Config{
-		ClientAuth:         tls.RequireAndVerifyClientCert,
+		ClientAuth:         clientAuth,
 		Certificates:       []tls.Certificate{tlsCert},
 		ClientCAs:          certpool,
 		RootCAs:            certpool,
@@ -66,6 +71,7 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 			if options.Roots == nil {
 				return errors.New("no root certificate")
 			}
+
 			if _, err := cert.Verify(options); err != nil {
 				return err
 			}

@@ -26,6 +26,7 @@ func main() {
 	var maxInflight = flag.Int("max-inflight", 4096, "max inflight TCP connections")
 	var maxConnectionHandler = flag.Int("max-connection", 1024, "per tunnel connection pool size")
 	var operatorAddr = flag.String("operator-addr", "0.0.0.0:58008", "Address for operators connections")
+	var insecureAgents = flag.Bool("insecure-agents", false, "Disable certificate verification for agents (insecure!)")
 
 	flag.Parse()
 
@@ -53,6 +54,7 @@ func main() {
 		MaxInFlight:          *maxInflight,
 		MaxConnectionHandler: *maxConnectionHandler,
 		OperatorAddr:         *operatorAddr,
+		InsecureAgents:       *insecureAgents,
 	}
 
 	db, err := storage.New(cfg.GetStorageDir())
