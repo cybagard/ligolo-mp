@@ -11,6 +11,7 @@ require (
 
 require (
 	github.com/gdamore/tcell/v2 v2.8.1
+	github.com/google/uuid v1.6.0
 	github.com/rivo/tview v0.0.0-20240807205129-e4c497cc59ed
 	github.com/rs/xid v1.6.0
 	github.com/vishvananda/netlink v1.3.0
@@ -24,7 +25,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect

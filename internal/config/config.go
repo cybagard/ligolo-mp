@@ -16,6 +16,7 @@ type Config struct {
 	MaxInFlight          int
 	MaxConnectionHandler int
 	OperatorAddr         string
+	InsecureAgents       bool
 }
 
 func (cfg *Config) GetRootAppDir() string {
