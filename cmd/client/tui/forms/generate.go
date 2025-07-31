@@ -111,7 +111,7 @@ func NewGenerateForm() *GenerateForm {
 	goosField.SetFocusFunc(func() {
 		hintBox.SetText(generate_goos.Hint)
 	})
-	goosField.SetOptions([]string{"Windows", "Linux", "Darwin"}, func(option string, index int) {
+	goosField.SetOptions([]string{"Windows", "Linux", "FreeBSD", "Darwin"}, func(option string, index int) {
 		generate_goos.Last.ID = index
 		generate_goos.Last.Value = strings.ToLower(option)
 	})
