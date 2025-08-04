@@ -15,7 +15,7 @@
 - Auto-restoring routing
 - Unlimited concurrent relays
 - SOCKS and HTTP proxy support
-- Cross-platform agent compatible with Linux/MacOS/Windows 7+
+- Cross-platform agent compatible with Linux/FreeBSD/MacOS/Windows 7+
 - Routing to the loopback of target machine (no more port forwarding)
 - Listeners are independent redirectors
 - Dynamic mTLS-enabled agent binaries generation with obfuscation option
