@@ -28,9 +28,8 @@ func main() {
 		bufferSize  = flag.Int("event-buffer", 200, "number of recent activity events to retain for the events resource")
 		verbose     = flag.Bool("v", false, "verbose logging")
 		allowWrites = flag.Bool("allow-writes", false, "register state-changing tools (relay, routing, redirectors, rename/kill); off by default")
-		// Admin write tools (operator/cert management, agent generation) arrive
-		// in a later milestone; accepted now but inert.
-		allowAdmin  = flag.Bool("allow-admin", false, "(not yet supported; reserved for admin write tools)")
+		allowAdmin  = flag.Bool("allow-admin", false, "register admin write tools (operator/cert management, agent generation); requires an admin operator; off by default")
+		agentOut    = flag.String("agent-out", "", "directory where ligolo_generate_agent writes agent binaries (required to enable that tool)")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 
@@ -58,11 +57,11 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if *allowAdmin {
-		slog.Warn("admin write tools are not supported in this build; -allow-admin ignored")
-	}
 	if *allowWrites {
 		slog.Warn("write tools enabled: this MCP server can change the engagement (relay, routing, redirectors, kill)")
+	}
+	if *allowAdmin {
+		slog.Warn("admin write tools enabled: this MCP server can manage operators, regenerate certs, and generate agents (admin operator only)")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -74,6 +73,8 @@ func main() {
 		HTTPAddr:        *httpAddr,
 		EventBufferSize: *bufferSize,
 		AllowWrites:     *allowWrites,
+		AllowAdmin:      *allowAdmin,
+		AgentOut:        *agentOut,
 	}
 
 	if err := mcp.Serve(ctx, opts); err != nil {

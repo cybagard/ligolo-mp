@@ -32,6 +32,20 @@ type Options struct {
 	// redirectors, rename/kill). Off by default: an MCP host with the default
 	// configuration can observe but not change the engagement.
 	AllowWrites bool
+	// AllowAdmin registers admin write tools (operator management, cert regen,
+	// agent generation). Off by default and only effective for an operator the
+	// server considers admin. Implies AllowWrites is honored independently.
+	AllowAdmin bool
+	// AgentOut is the directory where ligolo_generate_agent writes agent
+	// binaries. Agent bytes are never streamed into the model context.
+	AgentOut string
+}
+
+// regConfig controls which tool groups newServer registers.
+type regConfig struct {
+	allowWrites bool
+	allowAdmin  bool
+	agentOut    string
 }
 
 // Serve connects to the ligolo-mp server as an operator client and runs the
@@ -62,7 +76,11 @@ func Serve(ctx context.Context, opts Options) error {
 	// Feed the recent-activity resource from the server event stream.
 	go client.consumeEvents(ctx)
 
-	server := newServer(client, opts.AllowWrites)
+	server := newServer(client, regConfig{
+		allowWrites: opts.AllowWrites,
+		allowAdmin:  opts.AllowAdmin,
+		agentOut:    opts.AgentOut,
+	})
 
 	switch opts.Transport {
 	case TransportStdio:
@@ -95,7 +113,7 @@ func Serve(ctx context.Context, opts Options) error {
 // resource. Read tools are always registered; admin read tools only when the
 // connected operator is an admin; state-changing tools only when allowWrites is
 // set. Admin *write* tools remain out of scope until milestone M3.
-func newServer(client *Client, allowWrites bool) *mcp.Server {
+func newServer(client *Client, cfg regConfig) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "ligolo-mp",
 		Title:   "Ligolo-MP",
@@ -108,10 +126,16 @@ func newServer(client *Client, allowWrites bool) *mcp.Server {
 		registerAdminReadTools(server, client)
 	}
 
-	if allowWrites {
+	if cfg.allowWrites {
 		registerSessionWriteTools(server, client)
 		registerRouteTools(server, client)
 		registerRedirectorTools(server, client)
+	}
+
+	// Admin write tools require both the operator's admin privilege and explicit
+	// opt-in. The server enforces admin on every call regardless.
+	if cfg.allowAdmin && client.IsAdmin() {
+		registerAdminWriteTools(server, client, cfg.agentOut)
 	}
 
 	registerEventsResource(server, client)

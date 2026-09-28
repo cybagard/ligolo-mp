@@ -263,8 +263,12 @@ Example MCP host registration (Claude Code / any MCP client):
    Destructive tools (kill session, del route, del redirector) carry
    `destructiveHint`; the rest are marked non-read-only. Tests cover flag
    gating, argument propagation, and required-argument validation.
-3. **M3 — Admin tools.** Operator management, cert regen, agent generation behind
-   `--allow-admin`.
+3. **M3 — Admin tools.** ✅ *Implemented.* Operator management
+   (`ligolo_add_operator`/`del`/`promote`/`demote`), `ligolo_regen_cert`, and
+   `ligolo_generate_agent`, behind `--allow-admin` and registered only for an
+   admin operator. `generate_agent` writes the binary to `--agent-out` and
+   returns a path + size (never the bytes). Operator export (private-key-bearing
+   credential) is intentionally not exposed.
 4. **M4 — API hardening.** gRPC status codes, proto comments, `doc/API.md`.
 5. **M5 — (Optional) REST read gateway** for dashboards.
 
