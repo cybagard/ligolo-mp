@@ -24,6 +24,18 @@ type fakeLigolo struct {
 	certs     *pb.GetCertsResp
 
 	lastTraceIP string
+
+	// write-call capture
+	renamed      *pb.RenameSessionReq
+	killed       *pb.KillSessionReq
+	started      *pb.StartRelayReq
+	stopped      *pb.StopRelayReq
+	addedRoute   *pb.AddRouteReq
+	editedRoute  *pb.EditRouteReq
+	movedRoute   *pb.MoveRouteReq
+	deletedRoute *pb.DelRouteReq
+	addedRedir   *pb.AddRedirectorReq
+	deletedRedir *pb.DelRedirectorReq
 }
 
 func (f *fakeLigolo) GetMetadata(_ context.Context, _ *pb.Empty, _ ...grpc.CallOption) (*pb.GetMetadataResp, error) {
@@ -41,6 +53,47 @@ func (f *fakeLigolo) GetOperators(_ context.Context, _ *pb.Empty, _ ...grpc.Call
 }
 func (f *fakeLigolo) GetCerts(_ context.Context, _ *pb.Empty, _ ...grpc.CallOption) (*pb.GetCertsResp, error) {
 	return f.certs, nil
+}
+
+func (f *fakeLigolo) RenameSession(_ context.Context, in *pb.RenameSessionReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.renamed = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) KillSession(_ context.Context, in *pb.KillSessionReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.killed = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) StartRelay(_ context.Context, in *pb.StartRelayReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.started = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) StopRelay(_ context.Context, in *pb.StopRelayReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.stopped = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) AddRoute(_ context.Context, in *pb.AddRouteReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.addedRoute = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) EditRoute(_ context.Context, in *pb.EditRouteReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.editedRoute = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) MoveRoute(_ context.Context, in *pb.MoveRouteReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.movedRoute = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) DelRoute(_ context.Context, in *pb.DelRouteReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.deletedRoute = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) AddRedirector(_ context.Context, in *pb.AddRedirectorReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.addedRedir = in
+	return &pb.Empty{}, nil
+}
+func (f *fakeLigolo) DelRedirector(_ context.Context, in *pb.DelRedirectorReq, _ ...grpc.CallOption) (*pb.Empty, error) {
+	f.deletedRedir = in
+	return &pb.Empty{}, nil
 }
 
 func newTestClient(l pb.LigoloClient, isAdmin bool) *Client {
@@ -84,10 +137,10 @@ func sampleFake() *fakeLigolo {
 }
 
 // connectTest wires a client session to a server built over newServer.
-func connectTest(t *testing.T, client *Client) *mcp.ClientSession {
+func connectTest(t *testing.T, client *Client, allowWrites bool) *mcp.ClientSession {
 	t.Helper()
 	ctx := context.Background()
-	server := newServer(client)
+	server := newServer(client, allowWrites)
 
 	st, ct := mcp.NewInMemoryTransports()
 	if _, err := server.Connect(ctx, st, nil); err != nil {
@@ -121,7 +174,7 @@ func callText(t *testing.T, cs *mcp.ClientSession, name string, args any) string
 }
 
 func TestListSessions(t *testing.T) {
-	cs := connectTest(t, newTestClient(sampleFake(), true))
+	cs := connectTest(t, newTestClient(sampleFake(), true), false)
 	out := callText(t, cs, "ligolo_list_sessions", noInput{})
 
 	for _, want := range []string{"victim01", "10.0.0.0/24", "ligolo0", "0.0.0.0:9000"} {
@@ -132,7 +185,7 @@ func TestListSessions(t *testing.T) {
 }
 
 func TestGetMetadata(t *testing.T) {
-	cs := connectTest(t, newTestClient(sampleFake(), true))
+	cs := connectTest(t, newTestClient(sampleFake(), true), false)
 	out := callText(t, cs, "ligolo_get_metadata", noInput{})
 	if !strings.Contains(out, "tester") || !strings.Contains(out, "11601") {
 		t.Errorf("metadata output unexpected: %s", out)
@@ -141,7 +194,7 @@ func TestGetMetadata(t *testing.T) {
 
 func TestTraceroutePassesIP(t *testing.T) {
 	fake := sampleFake()
-	cs := connectTest(t, newTestClient(fake, true))
+	cs := connectTest(t, newTestClient(fake, true), false)
 	out := callText(t, cs, "ligolo_traceroute", tracerouteInput{IP: "10.0.0.9"})
 	if fake.lastTraceIP != "10.0.0.9" {
 		t.Errorf("traceroute IP not propagated: got %q", fake.lastTraceIP)
@@ -152,7 +205,7 @@ func TestTraceroutePassesIP(t *testing.T) {
 }
 
 func TestTracerouteRequiresIP(t *testing.T) {
-	cs := connectTest(t, newTestClient(sampleFake(), true))
+	cs := connectTest(t, newTestClient(sampleFake(), true), false)
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ligolo_traceroute", Arguments: tracerouteInput{}})
 	if err != nil {
 		t.Fatalf("CallTool: %v", err)
@@ -163,7 +216,7 @@ func TestTracerouteRequiresIP(t *testing.T) {
 }
 
 func TestListCertsNeverLeaksKeys(t *testing.T) {
-	cs := connectTest(t, newTestClient(sampleFake(), true))
+	cs := connectTest(t, newTestClient(sampleFake(), true), false)
 	out := callText(t, cs, "ligolo_list_certs", noInput{})
 	if strings.Contains(out, "SECRETKEY") || strings.Contains(out, "CERTBYTES") {
 		t.Errorf("cert output leaked key/cert material: %s", out)
@@ -175,7 +228,7 @@ func TestListCertsNeverLeaksKeys(t *testing.T) {
 
 func TestAdminToolsGatedByPrivilege(t *testing.T) {
 	// Admin operator: admin read tools present.
-	adminTools := listToolNames(t, newTestClient(sampleFake(), true))
+	adminTools := listToolNames(t, newTestClient(sampleFake(), true), false)
 	for _, want := range []string{"ligolo_list_operators", "ligolo_list_certs"} {
 		if !adminTools[want] {
 			t.Errorf("admin tool %q missing for admin operator", want)
@@ -183,7 +236,7 @@ func TestAdminToolsGatedByPrivilege(t *testing.T) {
 	}
 
 	// Non-admin operator: admin read tools absent, read tools still present.
-	userTools := listToolNames(t, newTestClient(sampleFake(), false))
+	userTools := listToolNames(t, newTestClient(sampleFake(), false), false)
 	for _, notWant := range []string{"ligolo_list_operators", "ligolo_list_certs"} {
 		if userTools[notWant] {
 			t.Errorf("admin tool %q must not be registered for non-admin operator", notWant)
@@ -196,9 +249,9 @@ func TestAdminToolsGatedByPrivilege(t *testing.T) {
 	}
 }
 
-func listToolNames(t *testing.T, client *Client) map[string]bool {
+func listToolNames(t *testing.T, client *Client, allowWrites bool) map[string]bool {
 	t.Helper()
-	cs := connectTest(t, client)
+	cs := connectTest(t, client, allowWrites)
 	res, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
@@ -232,7 +285,7 @@ func TestEventsResourceReadable(t *testing.T) {
 	client := newTestClient(sampleFake(), false)
 	client.events.add(&pb.Event{Type: 1, Data: "session with 'x' disconnected"})
 
-	cs := connectTest(t, client)
+	cs := connectTest(t, client, false)
 	res, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: eventsURI})
 	if err != nil {
 		t.Fatalf("ReadResource: %v", err)
@@ -246,5 +299,66 @@ func TestEventsResourceReadable(t *testing.T) {
 	}
 	if !strings.Contains(res.Contents[0].Text, "disconnected") {
 		t.Errorf("events resource missing event: %s", res.Contents[0].Text)
+	}
+}
+
+func TestWriteToolsGatedByFlag(t *testing.T) {
+	writeToolNames := []string{
+		"ligolo_rename_session", "ligolo_kill_session",
+		"ligolo_start_relay", "ligolo_stop_relay",
+		"ligolo_add_route", "ligolo_edit_route", "ligolo_move_route", "ligolo_del_route",
+		"ligolo_add_redirector", "ligolo_del_redirector",
+	}
+
+	// Without --allow-writes, no write tools are registered.
+	off := listToolNames(t, newTestClient(sampleFake(), true), false)
+	for _, name := range writeToolNames {
+		if off[name] {
+			t.Errorf("write tool %q registered without allow-writes", name)
+		}
+	}
+
+	// With --allow-writes, all write tools are present.
+	on := listToolNames(t, newTestClient(sampleFake(), true), true)
+	for _, name := range writeToolNames {
+		if !on[name] {
+			t.Errorf("write tool %q missing with allow-writes", name)
+		}
+	}
+	// Read tools still present alongside writes.
+	if !on["ligolo_list_sessions"] {
+		t.Error("read tools should remain available with allow-writes")
+	}
+}
+
+func TestWriteToolPropagatesArgs(t *testing.T) {
+	fake := sampleFake()
+	cs := connectTest(t, newTestClient(fake, true), true)
+
+	callText(t, cs, "ligolo_add_route", addRouteInput{SessionID: "s1", Cidr: "192.168.5.0/24", Metric: 50})
+	if fake.addedRoute == nil || fake.addedRoute.GetSessionID() != "s1" {
+		t.Fatalf("add_route did not propagate session id: %+v", fake.addedRoute)
+	}
+	if fake.addedRoute.GetRoute().GetCidr() != "192.168.5.0/24" || fake.addedRoute.GetRoute().GetMetric() != 50 {
+		t.Errorf("add_route route fields wrong: %+v", fake.addedRoute.GetRoute())
+	}
+
+	callText(t, cs, "ligolo_del_redirector", delRedirectorInput{SessionID: "s1", RedirectorID: "rd9"})
+	if fake.deletedRedir == nil || fake.deletedRedir.GetRedirectorID() != "rd9" {
+		t.Errorf("del_redirector did not propagate id: %+v", fake.deletedRedir)
+	}
+}
+
+func TestWriteToolValidatesRequiredArgs(t *testing.T) {
+	cs := connectTest(t, newTestClient(sampleFake(), true), true)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "ligolo_add_route",
+		Arguments: addRouteInput{SessionID: "s1"}, // missing cidr
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Error("expected tool error for missing cidr, got success")
 	}
 }

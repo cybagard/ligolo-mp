@@ -22,15 +22,15 @@ import (
 
 func main() {
 	var (
-		configPath = flag.String("config", "", "operator config JSON (exported from ligolo-mp; required)")
-		transport  = flag.String("transport", "stdio", "MCP transport: stdio or http")
-		httpAddr   = flag.String("http-addr", "127.0.0.1:8080", "listen address when -transport=http")
-		bufferSize = flag.Int("event-buffer", 200, "number of recent activity events to retain for the events resource")
-		verbose    = flag.Bool("v", false, "verbose logging")
-		// Accepted for forward-compatibility with the documented flag surface.
-		// M1 is read-only; write/admin tools arrive in later milestones.
-		allowWrites = flag.Bool("allow-writes", false, "(not yet supported; reserved for M2)")
-		allowAdmin  = flag.Bool("allow-admin", false, "(not yet supported; reserved for M3)")
+		configPath  = flag.String("config", "", "operator config JSON (exported from ligolo-mp; required)")
+		transport   = flag.String("transport", "stdio", "MCP transport: stdio or http")
+		httpAddr    = flag.String("http-addr", "127.0.0.1:8080", "listen address when -transport=http")
+		bufferSize  = flag.Int("event-buffer", 200, "number of recent activity events to retain for the events resource")
+		verbose     = flag.Bool("v", false, "verbose logging")
+		allowWrites = flag.Bool("allow-writes", false, "register state-changing tools (relay, routing, redirectors, rename/kill); off by default")
+		// Admin write tools (operator/cert management, agent generation) arrive
+		// in a later milestone; accepted now but inert.
+		allowAdmin  = flag.Bool("allow-admin", false, "(not yet supported; reserved for admin write tools)")
 		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 
@@ -58,8 +58,11 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if *allowWrites || *allowAdmin {
-		slog.Warn("write/admin tools are not supported in this build (read-only MVP); flag ignored")
+	if *allowAdmin {
+		slog.Warn("admin write tools are not supported in this build; -allow-admin ignored")
+	}
+	if *allowWrites {
+		slog.Warn("write tools enabled: this MCP server can change the engagement (relay, routing, redirectors, kill)")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -70,6 +73,7 @@ func main() {
 		Transport:       mcp.Transport(*transport),
 		HTTPAddr:        *httpAddr,
 		EventBufferSize: *bufferSize,
+		AllowWrites:     *allowWrites,
 	}
 
 	if err := mcp.Serve(ctx, opts); err != nil {

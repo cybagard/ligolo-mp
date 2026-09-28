@@ -24,6 +24,19 @@ func readOnly(title string) *mcp.ToolAnnotations {
 	}
 }
 
+func boolPtr(b bool) *bool { return &b }
+
+// writeAction returns annotations for a state-changing tool. destructive marks
+// tools that may remove or tear down existing state (kill session, delete
+// route/redirector) so hosts can prompt or guard accordingly.
+func writeAction(title string, destructive bool) *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    false,
+		DestructiveHint: boolPtr(destructive),
+	}
+}
+
 // registerReconTools registers the always-available read-only recon tools.
 func registerReconTools(s *mcp.Server, c *Client) {
 	mcp.AddTool(s, &mcp.Tool{

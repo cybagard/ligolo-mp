@@ -11,6 +11,13 @@ import (
 // LLM-readable JSON. They intentionally omit binary/sensitive fields (private
 // keys, raw certificate bytes, agent binaries).
 
+// actionOutput is the result of a state-changing tool whose backing RPC returns
+// no data (pb.Empty). It confirms success and echoes what was done.
+type actionOutput struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
+
 type metadataOutput struct {
 	Operator operatorOutput `json:"operator"`
 	Server   serverOutput   `json:"server"`

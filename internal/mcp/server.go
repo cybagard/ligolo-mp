@@ -28,6 +28,10 @@ type Options struct {
 	HTTPAddr string
 	// EventBufferSize bounds the recent-activity ring buffer.
 	EventBufferSize int
+	// AllowWrites registers state-changing/destructive tools (relay, routing,
+	// redirectors, rename/kill). Off by default: an MCP host with the default
+	// configuration can observe but not change the engagement.
+	AllowWrites bool
 }
 
 // Serve connects to the ligolo-mp server as an operator client and runs the
@@ -58,7 +62,7 @@ func Serve(ctx context.Context, opts Options) error {
 	// Feed the recent-activity resource from the server event stream.
 	go client.consumeEvents(ctx)
 
-	server := newServer(client)
+	server := newServer(client, opts.AllowWrites)
 
 	switch opts.Transport {
 	case TransportStdio:
@@ -87,10 +91,11 @@ func Serve(ctx context.Context, opts Options) error {
 	}
 }
 
-// newServer builds the MCP server and registers the read-only tool set and the
-// events resource. Only the connected operator's privileges gate admin tools;
-// write tools are out of scope for milestone M1.
-func newServer(client *Client) *mcp.Server {
+// newServer builds the MCP server and registers the tool set and the events
+// resource. Read tools are always registered; admin read tools only when the
+// connected operator is an admin; state-changing tools only when allowWrites is
+// set. Admin *write* tools remain out of scope until milestone M3.
+func newServer(client *Client, allowWrites bool) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "ligolo-mp",
 		Title:   "Ligolo-MP",
@@ -98,10 +103,17 @@ func newServer(client *Client) *mcp.Server {
 	}, nil)
 
 	registerReconTools(server, client)
-	registerSessionTools(server, client)
+	registerSessionReadTools(server, client)
 	if client.IsAdmin() {
 		registerAdminReadTools(server, client)
 	}
+
+	if allowWrites {
+		registerSessionWriteTools(server, client)
+		registerRouteTools(server, client)
+		registerRedirectorTools(server, client)
+	}
+
 	registerEventsResource(server, client)
 
 	return server

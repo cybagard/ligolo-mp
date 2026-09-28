@@ -256,8 +256,13 @@ Example MCP host registration (Claude Code / any MCP client):
    `ligolo://events/recent` resource. Default-safe, read-only. No server changes.
    Adds the `github.com/modelcontextprotocol/go-sdk` dependency (which raises the
    module's Go directive to 1.25).
-2. **M2 — Write tools.** Relay + routing + redirector + rename/kill behind
-   `--allow-writes`, with annotations and tests.
+2. **M2 — Write tools.** ✅ *Implemented.* Relay (`ligolo_start_relay`/
+   `ligolo_stop_relay`), routing (`ligolo_add_route`/`edit`/`move`/`del`),
+   redirectors (`ligolo_add_redirector`/`del`), and `ligolo_rename_session`/
+   `ligolo_kill_session`, all registered only behind `--allow-writes`.
+   Destructive tools (kill session, del route, del redirector) carry
+   `destructiveHint`; the rest are marked non-read-only. Tests cover flag
+   gating, argument propagation, and required-argument validation.
 3. **M3 — Admin tools.** Operator management, cert regen, agent generation behind
    `--allow-admin`.
 4. **M4 — API hardening.** gRPC status codes, proto comments, `doc/API.md`.
