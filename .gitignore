@@ -1,3 +1,9 @@
 .vscode/
 dist/
 artifacts/**/*.zip
+
+# Build outputs
+/server
+/ligolo-mp
+/ligolo-mp-client
+/ligolo-mp-mcp
