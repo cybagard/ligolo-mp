@@ -249,9 +249,13 @@ Example MCP host registration (Claude Code / any MCP client):
 
 ## 6. Milestones
 
-1. **M1 — Read-only MCP (MVP).** `cmd/mcp` + connection reuse + read tools
-   (`get_metadata`, `list_sessions`, `traceroute`, `list_operators`/`list_certs`
-   when admin) + events resource. Default-safe. No server changes.
+1. **M1 — Read-only MCP (MVP).** ✅ *Implemented.* `cmd/mcp` + connection reuse
+   (`internal/mcp`) + read tools (`ligolo_get_metadata`, `ligolo_list_sessions`,
+   `ligolo_traceroute`, and `ligolo_list_operators`/`ligolo_list_certs`
+   registered only when the connected operator is admin) + the
+   `ligolo://events/recent` resource. Default-safe, read-only. No server changes.
+   Adds the `github.com/modelcontextprotocol/go-sdk` dependency (which raises the
+   module's Go directive to 1.25).
 2. **M2 — Write tools.** Relay + routing + redirector + rename/kill behind
    `--allow-writes`, with annotations and tests.
 3. **M3 — Admin tools.** Operator management, cert regen, agent generation behind

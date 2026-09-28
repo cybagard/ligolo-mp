@@ -37,7 +37,7 @@ build: assets binaries
 assets: go agent
 
 .PHONY: binaries
-binaries: server client
+binaries: server client mcp
 
 .PHONY: go
 go:
@@ -68,6 +68,10 @@ server:
 .PHONY: client
 client:
 	GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) CGO_ENABLED=0 $(GO) build -mod=vendor -trimpath -ldflags "$(LDFLAGS)" -o ligolo-mp-client ./cmd/client/
+
+.PHONY: mcp
+mcp:
+	GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) CGO_ENABLED=0 $(GO) build -mod=vendor -trimpath -ldflags "$(LDFLAGS)" -o ligolo-mp-mcp ./cmd/mcp/
 
 .PHONY: protobuf
 protobuf:
