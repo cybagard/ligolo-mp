@@ -281,6 +281,23 @@ func (sess *Session) IsMultiplexOpen() bool {
 	return true
 }
 
+// IsAlive actively probes the agent transport with a yamux ping. Unlike
+// IsMultiplexOpen --- which only reports whether the local session has already
+// been marked closed --- this detects a transport that is dead but not yet
+// reaped, e.g. an agent host that was reverted and never sent a TCP FIN. The
+// probe is bounded by the session's yamux ConnectionWriteTimeout.
+func (sess *Session) IsAlive() bool {
+	if !sess.IsMultiplexOpen() {
+		return false
+	}
+
+	if _, err := sess.Multiplex.Ping(); err != nil {
+		return false
+	}
+
+	return true
+}
+
 func (sess *Session) remoteGetInfo() (protocol.InfoReplyPacket, error) {
 	if !sess.IsMultiplexOpen() {
 		return protocol.InfoReplyPacket{}, fmt.Errorf("multiplex is disconnected")

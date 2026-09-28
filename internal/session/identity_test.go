@@ -7,6 +7,21 @@ import (
 	"github.com/ttpreport/ligolo-mp/v2/internal/protocol"
 )
 
+// TestIsAlive_NoMultiplex verifies that a session with no transport is not
+// considered alive, so a reconnecting agent supersedes it instead of being
+// rejected as a duplicate.
+func TestIsAlive_NoMultiplex(t *testing.T) {
+	t.Parallel()
+
+	sess := makeSession("", "", "h")
+	if sess.IsMultiplexOpen() {
+		t.Fatal("nil multiplex reported open")
+	}
+	if sess.IsAlive() {
+		t.Error("session with nil multiplex reported alive")
+	}
+}
+
 func addIface(sess *Session, mac string) {
 	hw, _ := net.ParseMAC(mac)
 	sess.Interfaces.Append(protocol.NetInterface{

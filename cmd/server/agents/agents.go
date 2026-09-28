@@ -187,12 +187,28 @@ func (aah *AgentApiHandler) startHandler() {
 
 func (aah *AgentApiHandler) startSessionMonitor(sess *session.Session) {
 	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
 	for {
 		select {
 		case <-tick.C:
+			// If this ID's live session is no longer this instance, we have
+			// been superseded by a reconnecting agent; stop monitoring the
+			// ghost so we do not touch the replacement.
+			if aah.sessionService.GetSession(sess.ID) != sess {
+				slog.Debug("session superseded, stopping monitor", slog.Any("session", sess))
+				return
+			}
 			aah.sessionService.UpdateLastSeen(sess.ID)
 		case <-sess.Multiplex.CloseChan():
 			slog.Debug("session multiplexer closed", slog.Any("session", sess))
+			// Only tear down if we are still the live session for this ID. A
+			// superseded ghost's transport also closes here, but the live
+			// session now belongs to the reconnecting agent and must be left
+			// intact.
+			if aah.sessionService.GetSession(sess.ID) != sess {
+				slog.Debug("superseded session multiplexer closed, ignoring", slog.Any("session", sess))
+				return
+			}
 			aah.sessionService.DisconnectSession(sess.ID)
 			events.Publish(events.ERROR, "session with '%s' disconnected", sess.GetName())
 			return

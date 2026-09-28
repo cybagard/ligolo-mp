@@ -45,9 +45,24 @@ func (ss *SessionService) NewSession(multiplex *yamux.Session, agentID string) (
 		slog.Debug("a saved session found, checking", slog.Any("saved_session", savedSession))
 
 		if savedSession.IsConnected {
-			slog.Debug("connection is a duplicate, aborting")
-			session.CleanUp()
-			return nil, errors.New("connection is a duplicate")
+			// The stored session still looks connected. It is either a genuine
+			// concurrent duplicate, or a stale ghost whose transport is dead
+			// but not yet reaped by the keepalive monitor (e.g. the agent host
+			// was reverted). Actively probe to tell them apart so a
+			// reconnecting agent is not wrongly rejected.
+			if savedSession.IsAlive() {
+				slog.Debug("connection is a duplicate of a live session, aborting")
+				session.CleanUp()
+				return nil, errors.New("connection is a duplicate")
+			}
+
+			// Dead transport: supersede it. Stop the ghost's resources here;
+			// its monitor goroutine will notice the closed multiplex and, since
+			// the live session for this ID is now the new one, will not touch
+			// it (see startSessionMonitor).
+			slog.Warn("saved session marked connected but transport is dead, superseding", slog.Any("session", savedSession))
+			savedSession.IsConnected = false
+			savedSession.CleanUp()
 		}
 		slog.Debug("connection is unique, restoring session")
 
