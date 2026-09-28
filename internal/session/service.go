@@ -25,13 +25,18 @@ func NewSessionService(config *config.Config, repo *SessionRepository) *SessionS
 	}
 }
 
-func (ss *SessionService) NewSession(multiplex *yamux.Session) (*Session, error) {
+// NewSession initializes a session for a freshly-accepted agent connection.
+// agentID is a stable identity for the agent (derived from its mTLS client
+// certificate); when empty, session identity falls back to the interface-MAC
+// hash. A stable agentID lets an agent reconnect to its existing session after
+// events that change the host's MACs, such as a VM snapshot revert.
+func (ss *SessionService) NewSession(multiplex *yamux.Session, agentID string) (*Session, error) {
 	session, err := new()
 	if err != nil {
 		return nil, err
 	}
 
-	if err := session.Connect(multiplex); err != nil {
+	if err := session.Connect(multiplex, agentID); err != nil {
 		return nil, err
 	}
 

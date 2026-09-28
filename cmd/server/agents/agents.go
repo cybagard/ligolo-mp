@@ -144,6 +144,11 @@ func (aah *AgentApiHandler) startHandler() {
 		remoteConn := <-aah.connections
 		slog.Debug("agent connection received")
 
+		// Resolve a stable agent identity from the mTLS client certificate
+		// before multiplexing. This survives VM reverts and NIC changes; an
+		// empty value falls back to the legacy interface-MAC identity.
+		agentID := agentIdentity(remoteConn)
+
 		config := yamux.DefaultConfig()
 		config.LogOutput = io.Discard
 		yamuxConn, err := yamux.Client(remoteConn, config)
@@ -153,7 +158,7 @@ func (aah *AgentApiHandler) startHandler() {
 		}
 		slog.Debug("established multiplexed connection with agent")
 
-		newSession, err := aah.sessionService.NewSession(yamuxConn)
+		newSession, err := aah.sessionService.NewSession(yamuxConn, agentID)
 		if err != nil {
 			slog.Error("could not initialize new session", slog.Any("error", err))
 			yamuxConn.Close()
@@ -188,4 +193,35 @@ func (aah *AgentApiHandler) startSessionMonitor(sess *session.Session) {
 
 func (aah *AgentApiHandler) Close() {
 	aah.quit <- nil
+}
+
+// agentIdentity derives a stable identity string for an agent from its mTLS
+// client certificate. Each generated agent binary embeds a unique client
+// certificate (with a random 128-bit serial), so this identity travels with
+// the binary and remains constant across host changes that alter network
+// interface MAC addresses — most notably VM snapshot reverts. It returns an
+// empty string when no client certificate is presented (e.g. insecure-agent
+// mode), in which case the caller falls back to the legacy MAC-based identity.
+func agentIdentity(conn net.Conn) string {
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return ""
+	}
+
+	// The peer certificate is only populated once the handshake completes.
+	// Handshake is idempotent, so triggering it here is safe even though yamux
+	// would otherwise drive it implicitly on first use.
+	if err := tlsConn.Handshake(); err != nil {
+		slog.Debug("agent TLS handshake failed while resolving identity", slog.Any("error", err))
+		return ""
+	}
+
+	certs := tlsConn.ConnectionState().PeerCertificates
+	if len(certs) == 0 || certs[0].SerialNumber == nil {
+		return ""
+	}
+
+	// Serial number is unique per generated agent certificate; base16 keeps it
+	// compact and stable.
+	return certs[0].SerialNumber.Text(16)
 }

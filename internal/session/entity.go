@@ -21,6 +21,7 @@ import (
 
 type Session struct {
 	ID          string
+	AgentID     string
 	Alias       string
 	IsConnected bool
 	IsRelaying  bool
@@ -153,7 +154,7 @@ func (sess *Session) Copy(source *Session) {
 	}
 }
 
-func (sess *Session) Connect(multiplex *yamux.Session) error {
+func (sess *Session) Connect(multiplex *yamux.Session, agentID string) error {
 	sess.Multiplex = multiplex
 
 	info, err := sess.remoteGetInfo()
@@ -167,6 +168,10 @@ func (sess *Session) Connect(multiplex *yamux.Session) error {
 	}
 
 	sess.Hostname = info.Hostname
+	// AgentID must be set before computing the identity hash so that a stable,
+	// out-of-band identity (e.g. derived from the agent's mTLS client
+	// certificate) takes precedence over the volatile interface-MAC fallback.
+	sess.AgentID = agentID
 	sess.ID = sess.Hash()
 	sess.IsConnected = true
 
@@ -409,6 +414,21 @@ func (sess *Session) remoteRemoveRedirector(id string) error {
 func (sess *Session) Hash() string {
 	hasher := sha1.New()
 
+	// Preferred identity: a stable agent identity provided out-of-band (derived
+	// from the agent's mTLS client certificate). It travels with the agent
+	// binary and survives host changes such as VM snapshot reverts, NIC
+	// re-provisioning, or transient virtual interfaces (docker, vpn, tun/tap)
+	// coming and going. The domain prefix keeps this namespace from ever
+	// colliding with the legacy MAC-based hash below.
+	if sess.AgentID != "" {
+		hasher.Write([]byte("agentid:"))
+		hasher.Write([]byte(sess.AgentID))
+		return hex.EncodeToString(hasher.Sum(nil))
+	}
+
+	// Legacy fallback (insecure-agent mode, or agents without a client
+	// certificate): identity is the hash of the interface MAC addresses. This
+	// is what breaks reconnection when MACs change on a revert.
 	ifaces := sess.Interfaces.All()
 	sort.SliceStable(ifaces, func(i, j int) bool {
 		return ifaces[i].HardwareAddr.String() > ifaces[j].HardwareAddr.String()
