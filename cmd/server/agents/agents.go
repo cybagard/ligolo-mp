@@ -151,6 +151,16 @@ func (aah *AgentApiHandler) startHandler() {
 
 		config := yamux.DefaultConfig()
 		config.LogOutput = io.Discard
+		// Tighten keepalive so a dead agent (e.g. a hard-reverted VM that never
+		// sent a TCP FIN) is detected and its session torn down promptly,
+		// freeing the identity for reconnect. Worst-case detection latency is
+		// roughly KeepAliveInterval + ConnectionWriteTimeout.
+		if aah.config.AgentKeepAliveInterval > 0 {
+			config.KeepAliveInterval = aah.config.AgentKeepAliveInterval
+		}
+		if aah.config.AgentConnectionWriteTimeout > 0 {
+			config.ConnectionWriteTimeout = aah.config.AgentConnectionWriteTimeout
+		}
 		yamuxConn, err := yamux.Client(remoteConn, config)
 		if err != nil {
 			slog.Error("could not open multiplexed connection with agent")

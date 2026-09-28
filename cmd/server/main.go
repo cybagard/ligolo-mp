@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/ttpreport/ligolo-mp/v2/cmd/client/tui"
 	"github.com/ttpreport/ligolo-mp/v2/cmd/server/agents"
@@ -28,6 +29,8 @@ func main() {
 	var maxConnectionHandler = flag.Int("max-connection", 1024, "per tunnel connection pool size")
 	var operatorAddr = flag.String("operator-addr", "0.0.0.0:58008", "Address for operators connections")
 	var insecureAgents = flag.Bool("insecure-agents", false, "Disable certificate verification for agents (insecure!)")
+	var agentKeepAlive = flag.Duration("agent-keepalive", 10*time.Second, "interval between agent keepalive pings (lower = faster dead-session detection)")
+	var agentWriteTimeout = flag.Duration("agent-write-timeout", 10*time.Second, "max time an agent write/keepalive-ping may stall before the session is closed (raise for high-latency pivots)")
 	var showVersion = flag.Bool("version", false, "print version")
 
 	flag.Usage = func() {
@@ -67,6 +70,9 @@ func main() {
 		MaxConnectionHandler: *maxConnectionHandler,
 		OperatorAddr:         *operatorAddr,
 		InsecureAgents:       *insecureAgents,
+
+		AgentKeepAliveInterval:      *agentKeepAlive,
+		AgentConnectionWriteTimeout: *agentWriteTimeout,
 	}
 
 	db, err := storage.New(cfg.GetStorageDir())
