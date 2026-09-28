@@ -291,6 +291,18 @@ and be reviewed independently.
 
 ---
 
+## Testing
+
+- **Unit tests** (`internal/mcp`, `internal/restgw`): the tool/gateway layers run
+  against a mocked `pb.LigoloClient` over an in-memory MCP transport / `httptest`
+  — `go test ./internal/mcp/... ./internal/restgw/...`.
+- **End-to-end** against a running server: build with `make mcp` and run
+  `scripts/mcp-smoke.sh -c <operator_ligolo-mp.json>`. It drives the MCP server
+  over stdio and asserts initialize, `tools/list`, `ligolo_get_metadata`,
+  `ligolo_list_sessions`, and the events resource; add `--writes` to also check
+  the write-tool gating. For interactive exploration use
+  `npx @modelcontextprotocol/inspector ./ligolo-mp-mcp --config <cfg>`.
+
 ## 7. Out of scope / non-goals
 
 - No new operator capabilities beyond what the gRPC API already exposes.
