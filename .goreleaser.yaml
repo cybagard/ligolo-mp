@@ -86,6 +86,23 @@ builds:
       - amd64
       - arm64
 
+  - main: ./cmd/restgw
+    id: "restgw"
+    binary: restgw
+    env: [CGO_ENABLED=0]
+    flags:
+      - -trimpath
+      - -mod=vendor
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - 386
+      - amd64
+      - arm64
+
 archives:
   - 
     id: "server"
@@ -102,6 +119,12 @@ archives:
   -
     id: "mcp"
     ids: ['mcp']
+    name_template: "{{ .ProjectName }}_{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+    formats: ['binary']
+
+  -
+    id: "restgw"
+    ids: ['restgw']
     name_template: "{{ .ProjectName }}_{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
     formats: ['binary']
 

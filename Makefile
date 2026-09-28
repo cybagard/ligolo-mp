@@ -37,7 +37,7 @@ build: assets binaries
 assets: go agent
 
 .PHONY: binaries
-binaries: server client mcp
+binaries: server client mcp restgw
 
 .PHONY: go
 go:
@@ -88,3 +88,7 @@ install:
 .PHONY: service
 service:
 	./install_service.sh
+
+.PHONY: restgw
+restgw:
+	GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) CGO_ENABLED=0 $(GO) build -mod=vendor -trimpath -ldflags "$(LDFLAGS)" -o ligolo-mp-restgw ./cmd/restgw/

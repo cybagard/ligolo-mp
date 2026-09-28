@@ -8,3 +8,5 @@ artifacts/**/*.zip
 /ligolo-mp-client
 /ligolo-mp-mcp
 /mcp
+/restgw
+/ligolo-mp-restgw
