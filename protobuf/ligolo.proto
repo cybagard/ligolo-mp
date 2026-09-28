@@ -6,37 +6,77 @@ package ligolo;
 
 import "google/protobuf/timestamp.proto";
 
+// Ligolo is the operator API. Every RPC is authenticated with the caller's
+// operator mTLS certificate (identity = client-cert CommonName; the cert
+// thumbprint must match the stored operator). Admin-only RPCs additionally
+// require the operator to have admin privileges.
+//
+// Error semantics (gRPC status codes): Unauthenticated when the client cert is
+// missing/unknown/revoked; PermissionDenied when a non-admin calls an
+// admin-only RPC; InvalidArgument for malformed input; NotFound for a missing
+// session; FailedPrecondition when an operation is refused by a server-side
+// invariant (e.g. removing the last admin).
 service Ligolo {
+  // Join subscribes to the server-side activity event stream (server -> client).
+  // The stream stays open until the client disconnects.
   rpc Join (Empty) returns (stream Event) {}
+  // GetMetadata returns the calling operator's identity and the server config.
   rpc GetMetadata (Empty) returns (GetMetadataResp) {}
 
+  // GetSessions lists all agent sessions and their state.
   rpc GetSessions (Empty) returns (GetSessionsResp) {}
+  // RenameSession sets a session's alias. NotFound if the session is unknown.
   rpc RenameSession (RenameSessionReq) returns (Empty) {}
+  // KillSession disconnects an agent and removes the session. Destructive.
   rpc KillSession (KillSessionReq) returns (Empty) {}
 
+  // StartRelay brings up a session's TUN and begins routing. NotFound if unknown.
   rpc StartRelay (StartRelayReq) returns (Empty) {}
+  // StopRelay tears down a session's TUN routing.
   rpc StopRelay (StopRelayReq) returns (Empty) {}
-  
+
+  // AddRoute adds a CIDR route to a session. Emits an activity event.
   rpc AddRoute (AddRouteReq) returns (Empty) {}
+  // EditRoute replaces a route's CIDR/metric/loopback settings.
   rpc EditRoute (EditRouteReq) returns (Empty) {}
+  // MoveRoute moves a route between sessions.
   rpc MoveRoute (MoveRouteReq) returns (Empty) {}
+  // DelRoute removes a route from a session. Destructive.
   rpc DelRoute (DelRouteReq) returns (Empty) {}
 
+  // AddRedirector creates a redirector (listener) on a session.
   rpc AddRedirector (AddRedirectorReq) returns (Empty) {}
+  // DelRedirector removes a redirector from a session. Destructive.
   rpc DelRedirector (DelRedirectorReq) returns (Empty) {}
-  
+
+  // GetCerts lists certificate metadata. Admin-only.
   rpc GetCerts (Empty) returns (GetCertsResp) {}
+  // RegenCert regenerates a certificate by name, invalidating the old one.
+  // Admin-only. Destructive.
   rpc RegenCert (RegenCertReq) returns (Empty) {}
 
+  // GetOperators lists all operators and their online status. Admin-only.
   rpc GetOperators (Empty) returns (GetOperatorsResp) {}
+  // ExportOperator returns an operator's portable config, which contains the
+  // operator's private key. Admin-only. Not exposed via the MCP server.
   rpc ExportOperator (ExportOperatorReq) returns (ExportOperatorResp) {}
+  // AddOperator creates a new operator; the server generates its certificate.
+  // Admin-only.
   rpc AddOperator (AddOperatorReq) returns (AddOperatorResp) {}
+  // DelOperator deletes an operator and revokes its certificate. Admin-only.
+  // Destructive. FailedPrecondition when it would remove the last (admin) operator.
   rpc DelOperator (DelOperatorReq) returns (Empty) {}
+  // PromoteOperator grants admin privileges to an operator. Admin-only.
   rpc PromoteOperator (PromoteOperatorReq) returns (Empty) {}
+  // DemoteOperator revokes admin privileges. Admin-only. FailedPrecondition
+  // when it would remove the last admin.
   rpc DemoteOperator (DemoteOperatorReq) returns (Empty) {}
 
+  // GenerateAgent compiles an agent binary for a target platform. Admin-only.
   rpc GenerateAgent (GenerateAgentReq) returns (GenerateAgentResp) {}
 
+  // Traceroute reports which session/interface routes to an IP.
+  // InvalidArgument if the IP is malformed.
   rpc Traceroute (TracerouteReq) returns (TracerouteResp) {}
 }
 

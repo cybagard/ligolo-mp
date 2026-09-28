@@ -269,7 +269,15 @@ Example MCP host registration (Claude Code / any MCP client):
    admin operator. `generate_agent` writes the binary to `--agent-out` and
    returns a path + size (never the bytes). Operator export (private-key-bearing
    credential) is intentionally not exposed.
-4. **M4 — API hardening.** gRPC status codes, proto comments, `doc/API.md`.
+4. **M4 — API hardening.** ✅ *Implemented.* gRPC status codes in the operator
+   handlers (`PermissionDenied` for admin checks, `Unauthenticated` for auth
+   failures, `InvalidArgument` for malformed input, `NotFound` for missing
+   sessions, `FailedPrecondition` for last-operator/last-admin guards), proto
+   comments on every RPC in `ligolo.proto`, and [`doc/API.md`](./API.md). The
+   session-not-found guard also fixes a latent nil-dereference in
+   `DelRedirector`. Additive and backward-compatible for the TUI. (The generated
+   `*.pb.go` is unchanged; regenerate with `make protobuf` to propagate the new
+   proto comments into Go doc.)
 5. **M5 — (Optional) REST read gateway** for dashboards.
 
 M1–M3 require **no changes to the ligolo-mp server**; only M4 touches server code

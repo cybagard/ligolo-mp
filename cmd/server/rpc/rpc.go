@@ -19,8 +19,10 @@ import (
 	"github.com/ttpreport/ligolo-mp/v2/internal/session"
 	pb "github.com/ttpreport/ligolo-mp/v2/protobuf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 type ligoloServer struct {
@@ -126,11 +128,24 @@ func (s *ligoloServer) GetSessions(ctx context.Context, in *pb.Empty) (*pb.GetSe
 	return result, nil
 }
 
+// requireSession returns the session or a NotFound status error. It also
+// guards handlers that dereference the session before the service call.
+func (s *ligoloServer) requireSession(id string) (*session.Session, error) {
+	sess := s.sessService.GetSession(id)
+	if sess == nil {
+		return nil, status.Errorf(codes.NotFound, "session %q not found", id)
+	}
+	return sess, nil
+}
+
 func (s *ligoloServer) RenameSession(ctx context.Context, in *pb.RenameSessionReq) (*pb.Empty, error) {
 	slog.Debug("Received request to rename session", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
-	err := s.sessService.RenameSession(in.SessionID, in.Alias)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.sessService.RenameSession(in.SessionID, in.Alias)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
 		events.Publish(events.OK, "%s: session '%s' renamed to '%s'", oper.Name, sess.GetName(), in.Alias)
@@ -154,8 +169,11 @@ func (s *ligoloServer) KillSession(ctx context.Context, in *pb.KillSessionReq) (
 func (s *ligoloServer) StartRelay(ctx context.Context, in *pb.StartRelayReq) (*pb.Empty, error) {
 	slog.Debug("Received request to start relay", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
-	err := s.sessService.StartRelay(in.SessionID)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.sessService.StartRelay(in.SessionID)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
 		events.Publish(events.OK, "%s: started relay to '%s'", oper.Name, sess.GetName())
@@ -167,8 +185,11 @@ func (s *ligoloServer) StartRelay(ctx context.Context, in *pb.StartRelayReq) (*p
 func (s *ligoloServer) StopRelay(ctx context.Context, in *pb.StopRelayReq) (*pb.Empty, error) {
 	slog.Debug("Received request to stop relay", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
-	err := s.sessService.StopRelay(in.SessionID)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.sessService.StopRelay(in.SessionID)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
 		events.Publish(events.OK, "%s: stopped relay to '%s'", oper.Name, sess.GetName())
@@ -180,9 +201,11 @@ func (s *ligoloServer) StopRelay(ctx context.Context, in *pb.StopRelayReq) (*pb.
 func (s *ligoloServer) AddRoute(ctx context.Context, in *pb.AddRouteReq) (*pb.Empty, error) {
 	slog.Debug("Received request to create route", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
-	err := s.sessService.NewRoute(in.SessionID, in.Route.Cidr, int(in.Route.Metric), in.Route.IsLoopback)
+	sess, err := s.requireSession(in.SessionID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.sessService.NewRoute(in.SessionID, in.Route.Cidr, int(in.Route.Metric), in.Route.IsLoopback); err != nil {
 		return nil, err
 	}
 
@@ -246,7 +269,10 @@ func (s *ligoloServer) MoveRoute(ctx context.Context, in *pb.MoveRouteReq) (*pb.
 func (s *ligoloServer) DelRoute(ctx context.Context, in *pb.DelRouteReq) (*pb.Empty, error) {
 	slog.Debug("Received request to delete route", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
 	route, err := s.sessService.RemoveRoute(in.SessionID, in.RouteID)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
@@ -259,8 +285,11 @@ func (s *ligoloServer) DelRoute(ctx context.Context, in *pb.DelRouteReq) (*pb.Em
 func (s *ligoloServer) AddRedirector(ctx context.Context, in *pb.AddRedirectorReq) (*pb.Empty, error) {
 	slog.Debug("Received request to create redirector", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
-	err := s.sessService.NewRedirector(in.SessionID, in.Protocol, in.From, in.To)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.sessService.NewRedirector(in.SessionID, in.Protocol, in.From, in.To)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
 		events.Publish(events.OK, "%s: redirector '%s'-->'%s' added to '%s'", oper.Name, in.From, in.To, sess.GetName())
@@ -272,9 +301,12 @@ func (s *ligoloServer) AddRedirector(ctx context.Context, in *pb.AddRedirectorRe
 func (s *ligoloServer) DelRedirector(ctx context.Context, in *pb.DelRedirectorReq) (*pb.Empty, error) {
 	slog.Debug("Received request to delete redirector", slog.Any("in", in))
 
-	sess := s.sessService.GetSession(in.SessionID)
+	sess, err := s.requireSession(in.SessionID)
+	if err != nil {
+		return nil, err
+	}
 	redir := sess.GetRedirector(in.RedirectorID)
-	err := s.sessService.RemoveRedirector(in.SessionID, in.RedirectorID)
+	err = s.sessService.RemoveRedirector(in.SessionID, in.RedirectorID)
 	if err == nil {
 		oper := ctx.Value("operator").(*operator.Operator)
 		events.Publish(events.OK, "%s: redirector '%s'-->'%s' added to '%s'", oper.Name, redir.From, redir.To, sess.GetName())
@@ -318,6 +350,10 @@ func (s *ligoloServer) GenerateAgent(ctx context.Context, in *pb.GenerateAgentRe
 func (s *ligoloServer) Traceroute(ctx context.Context, in *pb.TracerouteReq) (*pb.TracerouteResp, error) {
 	slog.Debug("Received request to trace address", slog.Any("in", in))
 
+	if net.ParseIP(in.IP) == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "malformed IP address: %q", in.IP)
+	}
+
 	trace, err := s.sessService.Traceroute(in.IP)
 	if err != nil {
 		return nil, err
@@ -337,7 +373,7 @@ func (s *ligoloServer) GetOperators(ctx context.Context, in *pb.Empty) (*pb.GetO
 	slog.Debug("Received request to list operators", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	opers, err := s.operService.AllOperators()
@@ -370,7 +406,7 @@ func (s *ligoloServer) ExportOperator(ctx context.Context, in *pb.ExportOperator
 	slog.Debug("Received request to delete operator", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	oper, err := s.operService.OperatorByName(in.Name)
@@ -393,11 +429,11 @@ func (s *ligoloServer) AddOperator(ctx context.Context, in *pb.AddOperatorReq) (
 	slog.Debug("Received request to create operator", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	if _, _, err := net.SplitHostPort(in.Operator.Server); err != nil {
-		return nil, fmt.Errorf("server is malformed: %s", err)
+		return nil, status.Errorf(codes.InvalidArgument, "server is malformed: %s", err)
 	}
 
 	newOperator, err := s.operService.NewOperator(in.Operator.Name, in.Operator.IsAdmin, in.Operator.Server)
@@ -414,7 +450,7 @@ func (s *ligoloServer) DelOperator(ctx context.Context, in *pb.DelOperatorReq) (
 	slog.Debug("Received request to delete operator", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	opers, err := s.operService.AllOperators()
@@ -423,7 +459,7 @@ func (s *ligoloServer) DelOperator(ctx context.Context, in *pb.DelOperatorReq) (
 	}
 
 	if len(opers) <= 1 {
-		return nil, errors.New("this is the last operator")
+		return nil, status.Error(codes.FailedPrecondition, "this is the last operator")
 	}
 
 	targetOper, err := s.operService.OperatorByName(in.Name)
@@ -440,7 +476,7 @@ func (s *ligoloServer) DelOperator(ctx context.Context, in *pb.DelOperatorReq) (
 		}
 
 		if counter <= 1 {
-			return nil, errors.New("this is the last admin remaining")
+			return nil, status.Error(codes.FailedPrecondition, "this is the last admin remaining")
 		}
 	}
 
@@ -466,7 +502,7 @@ func (s *ligoloServer) PromoteOperator(ctx context.Context, in *pb.PromoteOperat
 	slog.Debug("Received request to promote operator", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	_, err := s.operService.PromoteOperator(in.Name)
@@ -481,7 +517,7 @@ func (s *ligoloServer) DemoteOperator(ctx context.Context, in *pb.DemoteOperator
 	slog.Debug("Received request to demote operator", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	opers, err := s.operService.AllOperators()
@@ -497,7 +533,7 @@ func (s *ligoloServer) DemoteOperator(ctx context.Context, in *pb.DemoteOperator
 	}
 
 	if counter <= 1 {
-		return nil, errors.New("this is the last admin remaining")
+		return nil, status.Error(codes.FailedPrecondition, "this is the last admin remaining")
 	}
 
 	_, err = s.operService.DemoteOperator(in.Name)
@@ -512,7 +548,7 @@ func (s *ligoloServer) GetCerts(ctx context.Context, in *pb.Empty) (*pb.GetCerts
 	slog.Debug("Received request to list certs", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	certs, err := s.certService.GetAll()
@@ -532,7 +568,7 @@ func (s *ligoloServer) RegenCert(ctx context.Context, in *pb.RegenCertReq) (*pb.
 	slog.Debug("Received request to regenerate certs", slog.Any("in", in))
 	oper := ctx.Value("operator").(*operator.Operator)
 	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
+		return nil, status.Error(codes.PermissionDenied, "access denied")
 	}
 
 	_, err := s.certService.RegenerateCert(in.Name)
@@ -553,7 +589,7 @@ func (s *ligoloServer) GetMetadata(ctx context.Context, in *pb.Empty) (*pb.GetMe
 func (s *ligoloServer) operatorFromContext(ctx context.Context) (*operator.Operator, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
-		return nil, errors.New("unknown error reading grpc context")
+		return nil, status.Error(codes.Internal, "unknown error reading grpc context")
 	}
 
 	tlsInfo := p.AuthInfo.(credentials.TLSInfo)
@@ -569,7 +605,7 @@ func (s *ligoloServer) operatorFromContext(ctx context.Context) (*operator.Opera
 	incomingThumbprint := s.certService.Thumbprint(incomingCert.Raw)
 
 	if operator == nil || operator.Cert.Thumbprint != incomingThumbprint {
-		return nil, errors.New("authentication failed")
+		return nil, status.Error(codes.Unauthenticated, "authentication failed")
 	}
 
 	return operator, nil
