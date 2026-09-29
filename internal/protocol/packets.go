@@ -6,6 +6,12 @@ import (
 	"github.com/ttpreport/ligolo-mp/v2/internal/relay"
 )
 
+// MaxEnvelopeSize caps the payload size the decoder will accept from a peer.
+// Control messages (info/connect/redirector/ping) are small; relayed traffic
+// does not travel through the gob envelope. A generous but bounded cap prevents
+// a hostile peer from forcing huge or negative allocations.
+const MaxEnvelopeSize = 16 * 1024 * 1024 // 16 MiB
+
 // Envelope is the structure used when Encoding/Decode ligolo packets
 type Envelope struct {
 	Type    uint8

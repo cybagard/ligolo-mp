@@ -61,6 +61,7 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 	var clientAuth = tls.RequireAndVerifyClientCert
 	if config.InsecureAgents {
 		clientAuth = tls.NoClientCert
+		slog.Warn("INSECURE: agent certificate verification is DISABLED (-insecure-agents); anyone able to reach the agent listener can register as an agent")
 	}
 
 	tlsConfig := &tls.Config{
@@ -72,6 +73,10 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 		MaxVersion:         tls.VersionTLS13,
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return errors.New("no peer certificate presented")
+			}
+
 			cert, err := x509.ParseCertificate(rawCerts[0])
 			if err != nil {
 				return err
@@ -86,6 +91,13 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 
 			if _, err := cert.Verify(options); err != nil {
 				return err
+			}
+
+			// Reject revoked agent certificates. Without this a leaked agent
+			// credential could not be killed, since all agent certs share the
+			// same CA lineage.
+			if certService.IsRevoked(cert) {
+				return errors.New("certificate has been revoked")
 			}
 
 			return nil
@@ -142,32 +154,46 @@ func (aah *AgentApiHandler) serve(protocol string, listenIface string, tlsConfig
 func (aah *AgentApiHandler) startHandler() {
 	for {
 		remoteConn := <-aah.connections
-		slog.Debug("agent connection received")
-
-		config := yamux.DefaultConfig()
-		config.LogOutput = io.Discard
-		yamuxConn, err := yamux.Client(remoteConn, config)
-		if err != nil {
-			slog.Error("could not open multiplexed connection with agent")
-			continue
-		}
-		slog.Debug("established multiplexed connection with agent")
-
-		newSession, err := aah.sessionService.NewSession(yamuxConn)
-		if err != nil {
-			slog.Error("could not initialize new session", slog.Any("error", err))
-			yamuxConn.Close()
-			continue
-		}
-		slog.Debug("new session created", slog.Any("session", newSession))
-
-		go aah.startSessionMonitor(newSession)
-
-		slog.Debug("session initialized")
-
-		events.Publish(events.OK, "new session with '%s' established", newSession.GetName())
+		aah.handleAgentConn(remoteConn)
 	}
+}
 
+// handleAgentConn processes a single agent connection. It is isolated in its own
+// function with a panic recovery guard so that a malicious agent (the peer runs
+// in hostile territory) cannot crash the entire server by triggering a panic
+// during session establishment.
+func (aah *AgentApiHandler) handleAgentConn(remoteConn net.Conn) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("recovered from panic while handling agent connection", slog.Any("panic", r))
+			remoteConn.Close()
+		}
+	}()
+
+	slog.Debug("agent connection received")
+
+	config := yamux.DefaultConfig()
+	config.LogOutput = io.Discard
+	yamuxConn, err := yamux.Client(remoteConn, config)
+	if err != nil {
+		slog.Error("could not open multiplexed connection with agent")
+		return
+	}
+	slog.Debug("established multiplexed connection with agent")
+
+	newSession, err := aah.sessionService.NewSession(yamuxConn)
+	if err != nil {
+		slog.Error("could not initialize new session", slog.Any("error", err))
+		yamuxConn.Close()
+		return
+	}
+	slog.Debug("new session created", slog.Any("session", newSession))
+
+	go aah.startSessionMonitor(newSession)
+
+	slog.Debug("session initialized")
+
+	events.Publish(events.OK, "new session with '%s' established", newSession.GetName())
 }
 
 func (aah *AgentApiHandler) startSessionMonitor(sess *session.Session) {

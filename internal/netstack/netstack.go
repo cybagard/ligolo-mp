@@ -2,6 +2,7 @@ package netstack
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -182,6 +183,15 @@ func (s *NetStack) GetTunConn() <-chan TunConn {
 }
 
 func (ns *NetStack) HandlePacket(localConn TunConn, multiplex *yamux.Session, localRoutes []route.Route) {
+	// This runs in its own goroutine per packet and processes data influenced by
+	// the (hostile) agent and target network. Contain any panic so a single
+	// malformed packet cannot crash the whole server.
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("recovered from panic in packet handler", slog.Any("panic", r))
+		}
+	}()
+
 	var endpointID stack.TransportEndpointID
 	var prototransport uint8
 	var protonet uint8
@@ -258,7 +268,13 @@ func (ns *NetStack) HandlePacket(localConn TunConn, multiplex *yamux.Session, lo
 	}
 
 	response := protocolDecoder.Envelope.Payload
-	reply := response.(protocol.ConnectResponsePacket)
+	reply, ok := response.(protocol.ConnectResponsePacket)
+	if !ok {
+		slog.Debug("Packet handler received unexpected response type",
+			slog.Any("type", fmt.Sprintf("%T", response)),
+		)
+		return
+	}
 	if reply.Established {
 		defer localConn.Terminate(true)
 		var wq waiter.Queue
@@ -367,7 +383,13 @@ func (ns *NetStack) handleICMP(localConn TunConn, multiplex *yamux.Session, loca
 		}
 
 		response := protocolDecoder.Envelope.Payload
-		reply := response.(protocol.HostPingResponsePacket)
+		reply, ok := response.(protocol.HostPingResponsePacket)
+		if !ok {
+			slog.Error("ICMP handler received unexpected response type",
+				slog.Any("type", fmt.Sprintf("%T", response)),
+			)
+			return
+		}
 		if reply.Alive {
 			slog.Debug("Host is alive, sending reply")
 			ns.ProcessICMP(&pkt)
@@ -454,7 +476,10 @@ func (ns *NetStack) ProcessICMP(pkt *stack.PacketBuffer) {
 		replyPkt.TransportProtocolNumber = header.ICMPv4ProtocolNumber
 
 		if err := r.WriteHeaderIncludedPacket(replyPkt); err != nil {
-			panic(err)
+			// A write error here must not take down the whole server; the
+			// packet originates from the (hostile) target network.
+			slog.Debug("ICMP reply write failed", slog.Any("error", err))
+			return
 		}
 	}
 }

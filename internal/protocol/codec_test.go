@@ -375,3 +375,53 @@ func TestEncoder_Size_SetByEncoder(t *testing.T) {
 		t.Errorf("type byte = %d, want %d", msgType, MessageHostPingRequest)
 	}
 }
+
+// TestDecoder_NegativeSize_ReturnsError verifies that a negative envelope size
+// (which would panic makeslice) is rejected with an error, not a panic. A hostile
+// peer must not be able to crash the server this way.
+func TestDecoder_NegativeSize_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	buf.WriteByte(MessageConnectRequest)
+	if err := binary.Write(&buf, binary.LittleEndian, int32(-1)); err != nil {
+		t.Fatal(err)
+	}
+
+	dec := NewDecoder(&buf)
+
+	panicked := false
+	var decodeErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		decodeErr = dec.Decode()
+	}()
+
+	if panicked {
+		t.Error("Decode panicked on negative size; should return error")
+	}
+	if decodeErr == nil {
+		t.Error("Decode should return error for negative size, got nil")
+	}
+}
+
+// TestDecoder_OversizedSize_ReturnsError verifies that an oversized envelope size
+// is rejected before allocating, preventing memory-exhaustion DoS.
+func TestDecoder_OversizedSize_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	buf.WriteByte(MessageConnectRequest)
+	if err := binary.Write(&buf, binary.LittleEndian, int32(MaxEnvelopeSize+1)); err != nil {
+		t.Fatal(err)
+	}
+
+	dec := NewDecoder(&buf)
+	if err := dec.Decode(); err == nil {
+		t.Error("Decode should return error for oversized envelope, got nil")
+	}
+}

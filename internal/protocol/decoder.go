@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -27,6 +28,13 @@ func (d *LigoloDecoder) Decode() error {
 
 	if err := binary.Read(d.reader, binary.LittleEndian, &d.Envelope.Size); err != nil {
 		return err
+	}
+
+	// Envelope.Size is attacker-controlled (the peer is an agent living in
+	// hostile territory). Reject negative sizes (which would panic makeslice)
+	// and oversized ones (which would exhaust memory) before allocating.
+	if d.Envelope.Size < 0 || d.Envelope.Size > MaxEnvelopeSize {
+		return fmt.Errorf("invalid envelope size: %d", d.Envelope.Size)
 	}
 
 	payload := make([]byte, d.Envelope.Size)

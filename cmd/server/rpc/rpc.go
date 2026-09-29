@@ -284,6 +284,11 @@ func (s *ligoloServer) DelRedirector(ctx context.Context, in *pb.DelRedirectorRe
 }
 
 func (s *ligoloServer) GenerateAgent(ctx context.Context, in *pb.GenerateAgentReq) (*pb.GenerateAgentResp, error) {
+	oper := ctx.Value("operator").(*operator.Operator)
+	if !oper.IsAdmin {
+		return nil, errors.New("access denied")
+	}
+
 	CACert, err := s.certService.GetCA()
 	if err != nil {
 		return nil, err
@@ -556,7 +561,14 @@ func (s *ligoloServer) operatorFromContext(ctx context.Context) (*operator.Opera
 		return nil, errors.New("unknown error reading grpc context")
 	}
 
-	tlsInfo := p.AuthInfo.(credentials.TLSInfo)
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return nil, errors.New("no TLS authentication info in grpc context")
+	}
+
+	if len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
+		return nil, errors.New("no verified client certificate")
+	}
 
 	incomingCert := tlsInfo.State.VerifiedChains[0][0]
 	operatorName := incomingCert.Subject.CommonName
@@ -631,6 +643,10 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 		MinVersion:         tls.VersionTLS13,
 		MaxVersion:         tls.VersionTLS13,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return errors.New("no peer certificate presented")
+			}
+
 			cert, err := x509.ParseCertificate(rawCerts[0])
 			if err != nil {
 				return err
@@ -644,6 +660,10 @@ func Run(config *config.Config, certService *certificate.CertificateService, ses
 			}
 			if _, err := cert.Verify(options); err != nil {
 				return err
+			}
+
+			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+				return errors.New("no verified certificate chain")
 			}
 
 			incomingCert := verifiedChains[0][0]

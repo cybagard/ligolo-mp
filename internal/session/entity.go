@@ -303,7 +303,10 @@ func (sess *Session) remoteGetInfo() (protocol.InfoReplyPacket, error) {
 
 	stream.Close()
 
-	response := protocolDecoder.Envelope.Payload.(protocol.InfoReplyPacket)
+	response, ok := protocolDecoder.Envelope.Payload.(protocol.InfoReplyPacket)
+	if !ok {
+		return protocol.InfoReplyPacket{}, fmt.Errorf("unexpected response type from agent: %T", protocolDecoder.Envelope.Payload)
+	}
 	return response, nil
 }
 
@@ -359,7 +362,10 @@ func (sess *Session) remoteCreateRedirector(id string, proto string, from string
 	if err := protocolDecoder.Decode(); err != nil {
 		return err
 	}
-	redirectorResponse := protocolDecoder.Envelope.Payload.(protocol.RedirectorResponsePacket)
+	redirectorResponse, ok := protocolDecoder.Envelope.Payload.(protocol.RedirectorResponsePacket)
+	if !ok {
+		return fmt.Errorf("unexpected response type from agent: %T", protocolDecoder.Envelope.Payload)
+	}
 	if redirectorResponse.Err {
 		return errors.New(redirectorResponse.ErrString)
 	}
@@ -395,10 +401,13 @@ func (sess *Session) remoteRemoveRedirector(id string) error {
 		return err
 
 	}
-	response := protocolDecoder.Envelope.Payload
+	response, ok := protocolDecoder.Envelope.Payload.(protocol.RedirectorCloseResponsePacket)
+	if !ok {
+		return fmt.Errorf("unexpected response type from agent: %T", protocolDecoder.Envelope.Payload)
+	}
 
-	if err := response.(protocol.RedirectorCloseResponsePacket).Err; err {
-		return errors.New(response.(protocol.RedirectorCloseResponsePacket).ErrString)
+	if response.Err {
+		return errors.New(response.ErrString)
 	}
 
 	stream.Close()

@@ -1,8 +1,11 @@
 # ligolo-mp — Security Assessment (Threat Model + Findings)
 
-Scope: static review of `cybagard/ligolo-mp` @ `claude/security-threats-vulnerabilities-5u06qu`
-(server, agent, operator client). Focus: external attack surface and remotely
-reachable vulnerabilities. Defensive review of the project's own code.
+Scope: static review of `cybagard/ligolo-mp` (server, agent, operator client).
+Focus: external attack surface and remotely reachable vulnerabilities.
+Defensive review of the project's own code.
+
+> **Status:** All findings below have been remediated on the `docs/security-assessment`
+> branch. See the *Remediation* section at the end for the fix locations.
 
 ---
 
@@ -211,3 +214,22 @@ trusts that a TLS-authenticated agent is well-behaved.** In this tool's own
 threat model the agent lives on the target — the most hostile place in the
 deployment — so agent-supplied bytes must be treated as adversarial: bounded,
 type-checked, and panic-isolated.
+
+---
+
+## 4. Remediation (applied on this branch)
+
+| # | Fix | Location |
+|---|-----|----------|
+| F1 | Server-side payload assertions converted to checked two-value form; per-packet handler (`HandlePacket`) and per-connection agent handler (`handleAgentConn`) wrapped in `recover()` so a hostile agent can no longer panic-crash the server. | `internal/session/entity.go`, `internal/netstack/netstack.go`, `cmd/server/agents/agents.go` |
+| F2 | Decoder rejects negative and oversized `Envelope.Size` (cap `MaxEnvelopeSize` = 16 MiB) before allocating; full payload read via `io.ReadFull`. Applied to both server and agent decoders. Regression tests added. | `internal/protocol/{decoder,packets}.go`, `internal/protocol/codec_test.go`, `artifacts/agent/internal/protocol/{decoder,packets}.go` |
+| F3 | Mitigated by the F2 size cap bounding gob input. | `internal/protocol/decoder.go` |
+| F4 | Agent listener now rejects revoked certificates (`IsRevoked`), matching the operator path. | `cmd/server/agents/agents.go` |
+| F5 | Loud warning logged when `-insecure-agents` disables agent authentication. | `cmd/server/agents/agents.go` |
+| F6 | `GenerateAgent` now requires an admin operator (consistent with `GetCerts`/`RegenCert`). **Behavioral change** — non-admin operators can no longer generate agents. | `cmd/server/rpc/rpc.go` |
+| F7 | Agent-generation inputs rejected if they contain a backtick (would break out of the raw-string literals in the generated source). | `internal/asset/service.go` |
+| F8 | Defensive length/type checks on `AuthInfo`, `VerifiedChains`, and `rawCerts` in both TLS verifiers. | `cmd/server/rpc/rpc.go`, `cmd/server/agents/agents.go` |
+| F9 | `ProcessICMP` no longer `panic`s on a write error (logs and returns); covered by the `HandlePacket` recover as well. | `internal/netstack/netstack.go` |
+
+Verified: `go build ./cmd/server/`, agent module `go build ./internal/protocol/`, and
+`go test ./internal/protocol/ ./internal/session/` all pass.

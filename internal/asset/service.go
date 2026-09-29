@@ -188,6 +188,15 @@ func (assets *AssetService) CompileAgent(goos string, goarch string, obfuscate b
 		}
 	}
 
+	// These values are interpolated into backtick-delimited raw string literals
+	// in the generated agent source, which is then compiled. A backtick would
+	// break out of the literal and inject arbitrary Go into the build.
+	for _, field := range []string{proxyServer, servers, CACert, AgentCert, AgentKey} {
+		if strings.Contains(field, "`") {
+			return nil, fmt.Errorf("invalid character in agent parameters")
+		}
+	}
+
 	agentDir, err := assets.renderAgent(proxyServer, servers, CACert, AgentCert, AgentKey, IgnoreEnvProxy)
 	if err != nil {
 		return nil, err

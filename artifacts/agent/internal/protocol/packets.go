@@ -6,6 +6,9 @@ import (
 	"github.com/ttpreport/ligolo-mp-agent/internal/relay"
 )
 
+// MaxEnvelopeSize caps the payload size the decoder will accept from a peer.
+const MaxEnvelopeSize = 16 * 1024 * 1024 // 16 MiB
+
 // Envelope is the structure used when Encoding/Decode ligolo packets
 type Envelope struct {
 	Type    uint8
