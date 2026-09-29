@@ -284,11 +284,6 @@ func (s *ligoloServer) DelRedirector(ctx context.Context, in *pb.DelRedirectorRe
 }
 
 func (s *ligoloServer) GenerateAgent(ctx context.Context, in *pb.GenerateAgentReq) (*pb.GenerateAgentResp, error) {
-	oper := ctx.Value("operator").(*operator.Operator)
-	if !oper.IsAdmin {
-		return nil, errors.New("access denied")
-	}
-
 	CACert, err := s.certService.GetCA()
 	if err != nil {
 		return nil, err

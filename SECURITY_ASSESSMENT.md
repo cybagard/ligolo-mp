@@ -226,7 +226,7 @@ type-checked, and panic-isolated.
 | F3 | Mitigated by the F2 size cap bounding gob input. | `internal/protocol/decoder.go` |
 | F4 | Agent listener now rejects revoked certificates (`IsRevoked`), matching the operator path. | `cmd/server/agents/agents.go` |
 | F5 | Loud warning logged when `-insecure-agents` disables agent authentication. | `cmd/server/agents/agents.go` |
-| F6 | `GenerateAgent` now requires an admin operator (consistent with `GetCerts`/`RegenCert`). **Behavioral change** — non-admin operators can no longer generate agents. | `cmd/server/rpc/rpc.go` |
+| F6 | Reviewed and accepted as designed: agent generation is intentionally available to any authenticated operator (the tool is multiplayer). Operators authenticate via mTLS, so this is a trusted-user action; the residual resource-amplification risk is accepted. No code change. | — |
 | F7 | Agent-generation inputs rejected if they contain a backtick (would break out of the raw-string literals in the generated source). | `internal/asset/service.go` |
 | F8 | Defensive length/type checks on `AuthInfo`, `VerifiedChains`, and `rawCerts` in both TLS verifiers. | `cmd/server/rpc/rpc.go`, `cmd/server/agents/agents.go` |
 | F9 | `ProcessICMP` no longer `panic`s on a write error (logs and returns); covered by the `HandlePacket` recover as well. | `internal/netstack/netstack.go` |
